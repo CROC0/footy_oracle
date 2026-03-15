@@ -1,15 +1,14 @@
 /**
  * Backtest the trained prediction model against 2025 season results.
  *
- * For each completed 2025 game in round R, the model is given only data
- * that would have been available at that point:
- *   - Recent form: completed games from 2025 rounds < R
- *   - Elo:         running Elo updated after each completed game
- *   - H2H:         games from 2024 only (1yr window)
+ * Uses the same logic as the production prediction.ts:
+ *  - Elo seeded from 2022–2024 with season carry-over (K=20, carryover=0.55)
+ *  - Cross-season form: prior season games fill in for early-round form gaps
+ *  - H2H weight = 0 (confirmed useless in training)
  */
 
 import { predictGame, buildEloRatings } from '../lib/prediction';
-import { completedGames, gamesForTeam, getRounds } from '../lib/squiggle';
+import { completedGames, getRounds } from '../lib/squiggle';
 import type { Game } from '../lib/types';
 
 const BASE = 'https://api.squiggle.com.au/';
@@ -34,8 +33,7 @@ async function main() {
     fetchGames(2022),
   ]);
 
-  // H2H: 1yr window (2024 only, per trained config)
-  const historical = [...games2022, ...games2023, ...games2024];
+  const historical = [...games2022, ...games2023, ...games2024]; // H2H (unused, weight=0)
   const rounds = getRounds(completedGames(games2025));
 
   console.log(`Backtesting ${completedGames(games2025).length} completed 2025 games across ${rounds.length} rounds...\n`);
@@ -44,8 +42,11 @@ async function main() {
   const roundResults: { round: number; correct: number; total: number; pct: string }[] = [];
   const teamStats = new Map<string, { predicted: number; correct: number }>();
 
-  // Running Elo seeded from 2022–2024 (3 years), updated as 2025 games complete
-  const runningElo = buildEloRatings([...games2022, ...games2023, ...games2024]);
+  // Seed Elo from 2022–2024 with carry-over, then apply one final carry-over to get
+  // the "start of 2025" state. We achieve this by passing an empty season array last.
+  const runningElo = buildEloRatings([games2022, games2023, games2024, [] as Game[]]);
+
+  const ELO_K = 20; // matches trained K
 
   for (const round of rounds) {
     const priorGames = completedGames(games2025).filter(g => g.round < round);
@@ -55,7 +56,10 @@ async function main() {
     for (const game of roundGames) {
       if (game.winner === null) { totalDraws++; continue; }
 
-      const pred = predictGame(game, priorGames, historical, runningElo, 2025);
+      // Cross-season form: supplement early-round 2025 form with 2024 games
+      const formGames = [...games2024, ...priorGames];
+
+      const pred = predictGame(game, formGames, historical, runningElo, 2025);
       const tip = predictedWinner(game, pred);
       const correct = tip === game.winner;
 
@@ -69,8 +73,7 @@ async function main() {
         if (correct) s.correct++;
       }
 
-      // Update running Elo after the game
-      const ELO_K = 40;
+      // Update running Elo after each game (same K and margin scaling as production)
       const ra = runningElo.get(game.hteamid) ?? 1500;
       const rb = runningElo.get(game.ateamid) ?? 1500;
       const ea = 1 / (1 + Math.pow(10, (rb - ra) / 400));
@@ -115,19 +118,20 @@ async function main() {
 
   // ── Favourite/underdog ────────────────────────────────────────────────────
   let favCorrect = 0, favTotal = 0;
-  const elo2 = buildEloRatings([...games2022, ...games2023, ...games2024]);
+  const elo2 = buildEloRatings([games2022, games2023, games2024, [] as Game[]]);
   for (const round of rounds) {
     const priorGames = completedGames(games2025).filter(g => g.round < round);
     for (const game of completedGames(games2025).filter(g => g.round === round)) {
       if (game.winner === null) continue;
-      const pred = predictGame(game, priorGames, historical, elo2, 2025);
+      const formGames = [...games2024, ...priorGames];
+      const pred = predictGame(game, formGames, historical, elo2, 2025);
       favTotal++;
       const fav = pred.homeWinProbability >= 0.5 ? game.hteam : game.ateam;
       if (game.winner === fav) favCorrect++;
       const ra = elo2.get(game.hteamid) ?? 1500, rb = elo2.get(game.ateamid) ?? 1500;
       const ea = 1 / (1 + Math.pow(10, (rb - ra) / 400));
       const margin = Math.abs((game.hscore ?? 0) - (game.ascore ?? 0));
-      const k = 40 * (1 + Math.min(margin / 60, 1));
+      const k = ELO_K * (1 + Math.min(margin / 60, 1));
       const sa = game.winner === game.hteam ? 1 : 0;
       elo2.set(game.hteamid, ra + k * (sa - ea));
       elo2.set(game.ateamid, rb + k * ((1 - sa) - (1 - ea)));

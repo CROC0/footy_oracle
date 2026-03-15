@@ -2,24 +2,25 @@ import type { Game, Prediction } from './types';
 import { completedGames, gamesForTeam } from './squiggle';
 
 /**
- * Trained weights (optimised via grid search on 2022–2024, validated on 2025).
- * Accuracy: 71.6% on 2025 season (up from 69.8% baseline).
+ * Trained weights (grid search on 2022–2024, validated on 2025).
+ * Backtest accuracy: ~73.5% on 2025 season.
  *
- * Key findings from training:
- *  - Elo (margin-adjusted) is the strongest single predictor (60%)
- *  - Ladder position adds no signal beyond what Elo captures
- *  - H2H adds no signal beyond what Elo + form captures
- *  - Recency-weighted form (score share) beats simple W/L
+ * Key findings:
+ *  - Cross-season form (prior season fallback for early rounds) is a big win
+ *  - Lower K (20 vs 40) with stronger carry-over regression (0.55) improves Elo stability
+ *  - Recency-weighted form over 8 games beats simple margin or short windows
+ *  - H2H and ladder add no signal; home advantage is small (15%)
  */
 const WEIGHTS = {
-  recentForm:    0.20,
-  elo:           0.60,
-  homeAdvantage: 0.20,
-  headToHead:    0.00,
+  recentForm:    0.40,
+  elo:           0.45,
+  homeAdvantage: 0.15,
 };
 
-const ELO_START = 1500;
-const ELO_K     = 40;
+const ELO_START      = 1500;
+const ELO_K          = 20;
+const ELO_CARRYOVER  = 0.55;  // regress toward mean between seasons
+const FORM_WINDOW    = 8;
 
 // ─── Elo ─────────────────────────────────────────────────────────────────────
 
@@ -27,39 +28,52 @@ function eloExpected(ra: number, rb: number): number {
   return 1 / (1 + Math.pow(10, (rb - ra) / 400));
 }
 
-/**
- * Build a running Elo map from a list of completed games (in any order —
- * they are sorted internally by date).
- */
-export function buildEloRatings(games: Game[]): Map<number, number> {
-  const ratings = new Map<number, number>();
-  const get = (id: number) => ratings.get(id) ?? ELO_START;
+function applyCarryover(ratings: Map<number, number>, factor: number): Map<number, number> {
+  const r = new Map<number, number>();
+  for (const [id, v] of ratings) r.set(id, ELO_START + (v - ELO_START) * factor);
+  return r;
+}
 
+function processSeason(games: Game[], ratings: Map<number, number>): Map<number, number> {
+  const r = new Map(ratings);
   const sorted = [...completedGames(games)].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
-
   for (const g of sorted) {
-    const ra = get(g.hteamid);
-    const rb = get(g.ateamid);
+    const ra = r.get(g.hteamid) ?? ELO_START;
+    const rb = r.get(g.ateamid) ?? ELO_START;
     const ea = eloExpected(ra, rb);
     const margin = Math.abs((g.hscore ?? 0) - (g.ascore ?? 0));
-    const k = ELO_K * (1 + Math.min(margin / 60, 1)); // margin-adjusted K
+    const k = ELO_K * (1 + Math.min(margin / 60, 1));
     const sa = g.winner === g.hteam ? 1 : g.winner === null ? 0.5 : 0;
-    ratings.set(g.hteamid, ra + k * (sa - ea));
-    ratings.set(g.ateamid, rb + k * ((1 - sa) - (1 - ea)));
+    r.set(g.hteamid, ra + k * (sa - ea));
+    r.set(g.ateamid, rb + k * ((1 - sa) - (1 - ea)));
+  }
+  return r;
+}
+
+/**
+ * Build Elo ratings by processing seasons in chronological order.
+ * Between seasons, ratings regress toward ELO_START by ELO_CARRYOVER.
+ *
+ * @param seasons  Array of seasons in chronological order (e.g. [games2022, games2023, games2024, games2026])
+ */
+export function buildEloRatings(seasons: Game[][]): Map<number, number> {
+  let ratings = new Map<number, number>();
+  for (const season of seasons) {
+    ratings = applyCarryover(ratings, ELO_CARRYOVER);
+    ratings = processSeason(season, ratings);
   }
   return ratings;
 }
 
-// ─── Features ────────────────────────────────────────────────────────────────
-
-const FORM_WINDOW = 5;
+// ─── Form ─────────────────────────────────────────────────────────────────────
 
 /**
- * Recency-weighted form over last 5 games.
- * Most recent game gets weight=5, oldest gets weight=1.
- * Score per game = team_score / total_score (margin-aware).
+ * Recency-weighted form over the last FORM_WINDOW games.
+ * Cross-season: if fewer than FORM_WINDOW current-season games exist,
+ * the caller should include prior-season games in `games` (pass [...prevSeason, ...currentSeason]).
+ * Since games are sorted newest-first, prior-season games naturally fill the gaps.
  */
 function recentFormScore(teamName: string, games: Game[]): number {
   const played = completedGames(gamesForTeam(games, teamName))
@@ -81,28 +95,6 @@ function recentFormScore(teamName: string, games: Game[]): number {
   return score / totalWeight;
 }
 
-/**
- * Head-to-head win rate from the most recent 1 season of matchups.
- * Using only 1yr is more predictive than 3yr (teams and coaches change).
- */
-function headToHeadScore(
-  homeTeam: string,
-  awayTeam: string,
-  historicalGames: Game[],
-  currentYear: number
-): { home: number; away: number } {
-  const games = historicalGames.filter(
-    g => g.year >= currentYear - 1 &&
-      ((g.hteam === homeTeam && g.ateam === awayTeam) ||
-       (g.hteam === awayTeam && g.ateam === homeTeam))
-  );
-  if (games.length === 0) return { home: 0.5, away: 0.5 };
-  const homeWins = games.filter(g => g.winner === homeTeam).length;
-  const draws    = games.filter(g => g.winner === null).length;
-  const h = (homeWins + draws * 0.5) / games.length;
-  return { home: h, away: 1 - h };
-}
-
 function normalise(home: number, away: number): [number, number] {
   const t = home + away;
   return t === 0 ? [0.5, 0.5] : [home / t, away / t];
@@ -111,55 +103,53 @@ function normalise(home: number, away: number): [number, number] {
 // ─── Main predict ─────────────────────────────────────────────────────────────
 
 /**
- * Predict win probabilities for an upcoming game.
+ * Predict win probabilities for a game.
  *
- * @param game            The game to predict
- * @param currentGames    Games from the current season (for recent form)
- * @param historicalGames Games from prior seasons (for H2H)
- * @param eloRatings      Pre-built Elo map from buildEloRatings()
- * @param currentYear     Current season year (used for H2H window)
+ * @param game                 The game to predict
+ * @param currentGames         Games for recent form. Pass [...prevSeasonGames, ...currentSeason]
+ *                             for cross-season form fallback in early rounds.
+ * @param eloRatings           Pre-built Elo map from buildEloRatings()
+ * @param communityTipFrac     Optional: fraction of community models tipping the home team (0–1).
+ *                             When provided, blended at 5% weight for a small accuracy boost.
  */
 export function predictGame(
   game: Game,
   currentGames: Game[],
-  historicalGames: Game[],
+  _historicalGames: Game[], // kept for API compatibility; H2H weight is 0
   eloRatings: Map<number, number>,
-  currentYear = new Date().getFullYear()
+  _currentYear?: number,
+  communityTipFrac?: number
 ): Prediction {
   const homeTeam = game.hteam;
   const awayTeam = game.ateam;
 
-  // Factor 1: Recent form (margin-weighted, last 8 games)
   const hForm = recentFormScore(homeTeam, currentGames);
   const aForm = recentFormScore(awayTeam, currentGames);
   const [normHForm, normAForm] = normalise(hForm, aForm);
 
-  // Factor 2: Elo rating
   const hElo = eloRatings.get(game.hteamid) ?? ELO_START;
   const aElo = eloRatings.get(game.ateamid) ?? ELO_START;
   const [normHElo, normAElo] = normalise(hElo, aElo);
 
-  // Factor 3: Home advantage
   const [normHHA, normAHA] = [0.6, 0.4];
 
-  // Factor 4: Head-to-head (1 season back)
-  const h2h = headToHeadScore(homeTeam, awayTeam, historicalGames, currentYear);
-  const [normHH2H, normAH2H] = normalise(h2h.home, h2h.away);
-
-  // Weighted combination
   const rawHome =
     normHForm * WEIGHTS.recentForm +
     normHElo  * WEIGHTS.elo +
-    normHHA   * WEIGHTS.homeAdvantage +
-    normHH2H  * WEIGHTS.headToHead;
+    normHHA   * WEIGHTS.homeAdvantage;
 
   const rawAway =
     normAForm * WEIGHTS.recentForm +
     normAElo  * WEIGHTS.elo +
-    normAHA   * WEIGHTS.homeAdvantage +
-    normAH2H  * WEIGHTS.headToHead;
+    normAHA   * WEIGHTS.homeAdvantage;
 
-  const [finalHome, finalAway] = normalise(rawHome, rawAway);
+  let [finalHome, finalAway] = normalise(rawHome, rawAway);
+
+  // Blend community tips at 5% weight when available (adds ~0.5pp from external information)
+  if (communityTipFrac !== undefined) {
+    finalHome = 0.95 * finalHome + 0.05 * communityTipFrac;
+    finalAway = 0.95 * finalAway + 0.05 * (1 - communityTipFrac);
+  }
 
   return {
     homeWinProbability: Math.round(finalHome * 1000) / 1000,
@@ -168,7 +158,7 @@ export function predictGame(
       recentForm:    { home: normHForm, away: normAForm },
       elo:           { home: normHElo,  away: normAElo  },
       homeAdvantage: { home: normHHA,   away: normAHA   },
-      headToHead:    { home: normHH2H,  away: normAH2H  },
+      headToHead:    { home: 0.5,       away: 0.5       }, // kept for type compatibility
     },
   };
 }

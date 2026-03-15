@@ -11,6 +11,7 @@ import type { SquiggleTipSummary } from '@/lib/types';
 
 interface Props {
   games2026: Game[];
+  formGames: Game[];       // [...prevSeason, ...games2026] for cross-season form fallback
   historicalGames: Game[];
   eloRatings: [number, number][]; // serialised Map entries [teamid, rating]
   tips: Tip[];
@@ -33,7 +34,7 @@ function buildTipSummary(gameid: number, tips: Tip[], homeTeam: string, awayTeam
   return { tipCount: gameTips.length, homeTips, awayTips, homeConfidence: avgConfidence };
 }
 
-export default function HomeGamesView({ games2026, historicalGames, eloRatings, tips, currentYear }: Props) {
+export default function HomeGamesView({ games2026, formGames, historicalGames, eloRatings, tips, currentYear }: Props) {
   const rounds = getRounds(games2026);
   const defaultRound = detectCurrentRound(games2026);
   const [selectedRound, setSelectedRound] = useState(defaultRound);
@@ -57,8 +58,11 @@ export default function HomeGamesView({ games2026, historicalGames, eloRatings, 
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingRoundGames.map((game) => {
-              const prediction = predictGame(game, games2026, historicalGames, eloMap, currentYear);
               const squiggleTips = buildTipSummary(game.id, tips, game.hteam, game.ateam);
+              const communityTipFrac = squiggleTips.tipCount > 0
+                ? squiggleTips.homeTips / squiggleTips.tipCount
+                : undefined;
+              const prediction = predictGame(game, formGames, historicalGames, eloMap, currentYear, communityTipFrac);
               const favGame = isFavourite(game.hteam) || isFavourite(game.ateam);
               return (
                 <GameCard

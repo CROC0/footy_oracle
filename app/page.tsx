@@ -16,11 +16,13 @@ async function GamesContent() {
   const currentRound = detectCurrentRound(games2026);
   const tips = await getTips(CURRENT_YEAR, currentRound);
 
-  // H2H: 1yr window — only need 2025 for current season
-  const historicalGames = [...games2023, ...games2024, ...games2025];
+  // Build Elo with season carry-over (matches training config: K=20, carryover=0.55)
+  const eloRatings = buildEloRatings([games2023, games2024, games2025, games2026]);
 
-  // Build Elo from 3 prior seasons + completed 2026 games (matches training config)
-  const eloRatings = buildEloRatings([...games2023, ...games2024, ...games2025, ...games2026]);
+  // Cross-season form: pass 2025 games alongside 2026 so early-round predictions
+  // can fall back to prior season form when few 2026 games are completed.
+  // H2H is unused (weight=0) but historicalGames kept for API compat.
+  const historicalGames = [...games2023, ...games2024, ...games2025];
 
   // Serialise Map to array of entries for RSC → Client Component prop passing
   const eloEntries = [...eloRatings.entries()] as [number, number][];
@@ -28,6 +30,7 @@ async function GamesContent() {
   return (
     <HomeGamesView
       games2026={games2026}
+      formGames={[...games2025, ...games2026]}
       historicalGames={historicalGames}
       eloRatings={eloEntries}
       tips={tips}
