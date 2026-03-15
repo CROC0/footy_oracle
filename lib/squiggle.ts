@@ -5,17 +5,24 @@ const USER_AGENT = 'FootyOracle/1.0 (footy-oracle; predict.compare.win)';
 
 async function squiggleFetch<T>(
   query: string,
-  revalidate: number
+  revalidate: number,
+  fallback: T
 ): Promise<T> {
   const url = `${BASE_URL}?${query}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    next: { revalidate },
-  });
-  if (!res.ok) {
-    throw new Error(`Squiggle API error ${res.status} for query: ${query}`);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      next: { revalidate },
+    });
+    if (!res.ok) {
+      console.warn(`Squiggle API error ${res.status} for query: ${query} — using fallback`);
+      return fallback;
+    }
+    return res.json() as Promise<T>;
+  } catch (err) {
+    console.warn(`Squiggle fetch failed for query: ${query} — using fallback`, err);
+    return fallback;
   }
-  return res.json() as Promise<T>;
 }
 
 // --- Games ---
@@ -24,7 +31,8 @@ export async function getGames(year: number): Promise<Game[]> {
   const revalidate = year === new Date().getFullYear() ? 300 : 86400;
   const data = await squiggleFetch<{ games: Game[] }>(
     `q=games;year=${year}`,
-    revalidate
+    revalidate,
+    { games: [] }
   );
   return data.games ?? [];
 }
@@ -33,7 +41,8 @@ export async function getGamesForRound(year: number, round: number): Promise<Gam
   const revalidate = year === new Date().getFullYear() ? 300 : 86400;
   const data = await squiggleFetch<{ games: Game[] }>(
     `q=games;year=${year};round=${round}`,
-    revalidate
+    revalidate,
+    { games: [] }
   );
   return data.games ?? [];
 }
@@ -43,7 +52,8 @@ export async function getGamesForRound(year: number, round: number): Promise<Gam
 export async function getTips(year: number, round: number): Promise<Tip[]> {
   const data = await squiggleFetch<{ tips: Tip[] }>(
     `q=tips;year=${year};round=${round}`,
-    3600
+    3600,
+    { tips: [] }
   );
   return data.tips ?? [];
 }
@@ -54,7 +64,8 @@ export async function getSquiggleLadder(year: number): Promise<SquiggleLadderEnt
   const revalidate = year === new Date().getFullYear() ? 3600 : 86400;
   const data = await squiggleFetch<{ ladder: SquiggleLadderEntry[] }>(
     `q=ladder;year=${year}`,
-    revalidate
+    revalidate,
+    { ladder: [] }
   );
   return data.ladder ?? [];
 }
@@ -104,14 +115,14 @@ export function computeStandings(games: Game[]): LadderEntry[] {
 // --- Teams ---
 
 export async function getTeams(): Promise<Team[]> {
-  const data = await squiggleFetch<{ teams: Team[] }>(`q=teams`, 86400);
+  const data = await squiggleFetch<{ teams: Team[] }>(`q=teams`, 86400, { teams: [] });
   return data.teams ?? [];
 }
 
 // --- Sources ---
 
 export async function getSources(): Promise<Source[]> {
-  const data = await squiggleFetch<{ sources: Source[] }>(`q=sources`, 86400);
+  const data = await squiggleFetch<{ sources: Source[] }>(`q=sources`, 86400, { sources: [] });
   return data.sources ?? [];
 }
 
