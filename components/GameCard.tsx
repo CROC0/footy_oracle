@@ -1,5 +1,6 @@
 import type { Game, Prediction, SquiggleTipSummary } from '@/lib/types';
 import PredictionPanel from './PredictionPanel';
+import GameDate from './GameDate';
 
 interface Props {
   game: Game;
@@ -7,18 +8,6 @@ interface Props {
   squiggleTips?: SquiggleTipSummary;
   isFavouriteGame?: boolean;
   showScore?: boolean;
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-AU', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'Australia/Perth',
-  });
 }
 
 export default function GameCard({
@@ -78,7 +67,7 @@ export default function GameCard({
 
       {/* Date/time */}
       <p className="text-xs text-slate-500 mt-2 text-center">
-        {formatDate(game.date)} AWST
+        <GameDate dateStr={game.date} />
       </p>
 
       {/* Favourite badge */}
