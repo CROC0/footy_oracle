@@ -27,7 +27,7 @@ export interface Team {
   abbrev: string;
   logo: string;
   debut: number;
-  retirement: number | null;
+  retirement: number | null; // 9999 = still active
 }
 
 export interface Tip {

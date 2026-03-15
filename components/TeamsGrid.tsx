@@ -13,8 +13,8 @@ interface Props {
 export default function TeamsGrid({ teams, games, ladder }: Props) {
   const { isFavourite } = useFavouriteTeam();
 
-  // Only current AFL teams (filter retired)
-  const activeTeams = teams.filter((t) => !t.retirement);
+  // Only current AFL teams — Squiggle uses 9999 as "still active" sentinel
+  const activeTeams = teams.filter((t) => !t.retirement || t.retirement > new Date().getFullYear());
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
