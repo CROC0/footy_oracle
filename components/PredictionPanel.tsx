@@ -47,24 +47,19 @@ export default function PredictionPanel({ homeTeam, awayTeam, prediction, squigg
       <div className="border-t border-slate-700 pt-2 mb-2">
         <p className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Prediction factors</p>
         <FactorBar
-          label="Recent Form (35%)"
+          label="Elo Rating (60%)"
+          homeScore={prediction.factors.elo.home}
+          awayScore={prediction.factors.elo.away}
+        />
+        <FactorBar
+          label="Recent Form (20%)"
           homeScore={prediction.factors.recentForm.home}
           awayScore={prediction.factors.recentForm.away}
         />
         <FactorBar
-          label="Ladder Position (30%)"
-          homeScore={prediction.factors.ladderPosition.home}
-          awayScore={prediction.factors.ladderPosition.away}
-        />
-        <FactorBar
-          label="Home Advantage (25%)"
+          label="Home Advantage (20%)"
           homeScore={prediction.factors.homeAdvantage.home}
           awayScore={prediction.factors.homeAdvantage.away}
-        />
-        <FactorBar
-          label="Head-to-Head (10%)"
-          homeScore={prediction.factors.headToHead.home}
-          awayScore={prediction.factors.headToHead.away}
         />
       </div>
 
