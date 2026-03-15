@@ -1,10 +1,14 @@
-import type { Prediction, SquiggleTipSummary } from '@/lib/types';
+import type { Prediction, SquiggleTipSummary, GameOdds } from '@/lib/types';
+
+// Edge threshold (pp) at which we flag a value bet
+const VALUE_THRESHOLD = 0.08;
 
 interface Props {
   homeTeam: string;
   awayTeam: string;
   prediction: Prediction;
   squiggleTips?: SquiggleTipSummary;
+  odds?: GameOdds;
 }
 
 function FactorBar({ label, homeScore, awayScore }: { label: string; homeScore: number; awayScore: number }) {
@@ -25,9 +29,15 @@ function FactorBar({ label, homeScore, awayScore }: { label: string; homeScore: 
   );
 }
 
-export default function PredictionPanel({ homeTeam, awayTeam, prediction, squiggleTips }: Props) {
+export default function PredictionPanel({ homeTeam, awayTeam, prediction, squiggleTips, odds }: Props) {
   const homePct = Math.round(prediction.homeWinProbability * 100);
   const awayPct = Math.round(prediction.awayWinProbability * 100);
+
+  // Value detection: model edge over bookmaker normalised implied probability
+  const homeEdge = odds ? prediction.homeWinProbability - odds.homeImpliedProb : 0;
+  const awayEdge = odds ? prediction.awayWinProbability - odds.awayImpliedProb : 0;
+  const homeValue = homeEdge >= VALUE_THRESHOLD;
+  const awayValue = awayEdge >= VALUE_THRESHOLD;
 
   return (
     <div className="mt-3 p-3 bg-slate-800 rounded-lg border border-slate-700">
@@ -85,6 +95,37 @@ export default function PredictionPanel({ homeTeam, awayTeam, prediction, squigg
                 </span>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Sportsbet odds + value indicator */}
+      {odds && (
+        <div className="border-t border-slate-700 pt-2">
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
+            {odds.bookmaker} odds
+          </p>
+          <div className="flex justify-between items-center text-xs">
+            {/* Home */}
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-slate-200">${odds.homeOdds.toFixed(2)}</span>
+              <span className="text-slate-500">({Math.round(odds.homeImpliedProb * 100)}%)</span>
+              {homeValue && (
+                <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded font-semibold border border-emerald-500/30">
+                  VALUE +{Math.round(homeEdge * 100)}pp
+                </span>
+              )}
+            </div>
+            {/* Away */}
+            <div className="flex items-center gap-1.5">
+              {awayValue && (
+                <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded font-semibold border border-emerald-500/30">
+                  VALUE +{Math.round(awayEdge * 100)}pp
+                </span>
+              )}
+              <span className="text-slate-500">({Math.round(odds.awayImpliedProb * 100)}%)</span>
+              <span className="font-mono text-slate-200">${odds.awayOdds.toFixed(2)}</span>
+            </div>
           </div>
         </div>
       )}

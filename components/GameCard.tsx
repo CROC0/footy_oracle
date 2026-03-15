@@ -1,4 +1,4 @@
-import type { Game, Prediction, SquiggleTipSummary } from '@/lib/types';
+import type { Game, Prediction, SquiggleTipSummary, GameOdds } from '@/lib/types';
 import PredictionPanel from './PredictionPanel';
 import GameDate from './GameDate';
 
@@ -6,6 +6,7 @@ interface Props {
   game: Game;
   prediction?: Prediction;
   squiggleTips?: SquiggleTipSummary;
+  odds?: GameOdds;
   isFavouriteGame?: boolean;
   showScore?: boolean;
 }
@@ -14,6 +15,7 @@ export default function GameCard({
   game,
   prediction,
   squiggleTips,
+  odds,
   isFavouriteGame = false,
   showScore = false,
 }: Props) {
@@ -86,6 +88,7 @@ export default function GameCard({
           awayTeam={game.ateam}
           prediction={prediction}
           squiggleTips={squiggleTips}
+          odds={odds}
         />
       )}
 

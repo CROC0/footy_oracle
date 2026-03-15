@@ -7,7 +7,7 @@ import { predictGame } from '@/lib/prediction';
 import { useFavouriteTeam } from '@/hooks/useFavouriteTeam';
 import RoundSelector from './RoundSelector';
 import GameCard from './GameCard';
-import type { SquiggleTipSummary } from '@/lib/types';
+import type { SquiggleTipSummary, GameOdds } from '@/lib/types';
 
 interface Props {
   games2026: Game[];
@@ -15,6 +15,7 @@ interface Props {
   historicalGames: Game[];
   eloRatings: [number, number][]; // serialised Map entries [teamid, rating]
   tips: Tip[];
+  odds: [string, GameOdds][]; // serialised Map entries ["hteam|ateam", GameOdds]
   currentYear: number;
 }
 
@@ -34,14 +35,15 @@ function buildTipSummary(gameid: number, tips: Tip[], homeTeam: string, awayTeam
   return { tipCount: gameTips.length, homeTips, awayTips, homeConfidence: avgConfidence };
 }
 
-export default function HomeGamesView({ games2026, formGames, historicalGames, eloRatings, tips, currentYear }: Props) {
+export default function HomeGamesView({ games2026, formGames, historicalGames, eloRatings, tips, odds, currentYear }: Props) {
   const rounds = getRounds(games2026);
   const defaultRound = detectCurrentRound(games2026);
   const [selectedRound, setSelectedRound] = useState(defaultRound);
   const { isFavourite } = useFavouriteTeam();
 
-  // Reconstruct Map from serialised entries (Maps can't be passed as RSC props)
+  // Reconstruct Maps from serialised entries (Maps can't be passed as RSC props)
   const eloMap = new Map<number, number>(eloRatings);
+  const oddsMap = new Map<string, GameOdds>(odds);
 
   const roundGames = gamesByRound(games2026, selectedRound);
   const upcomingRoundGames = roundGames.filter((g) => g.complete < 100);
@@ -64,12 +66,14 @@ export default function HomeGamesView({ games2026, formGames, historicalGames, e
                 : undefined;
               const prediction = predictGame(game, formGames, historicalGames, eloMap, currentYear, communityTipFrac);
               const favGame = isFavourite(game.hteam) || isFavourite(game.ateam);
+              const gameOdds = oddsMap.get([game.hteam, game.ateam].sort().join('|'));
               return (
                 <GameCard
                   key={game.id}
                   game={game}
                   prediction={prediction}
                   squiggleTips={squiggleTips}
+                  odds={gameOdds}
                   isFavouriteGame={favGame}
                 />
               );

@@ -101,3 +101,11 @@ export interface SquiggleTipSummary {
 }
 
 export type FormResult = 'W' | 'L' | 'D';
+
+export interface GameOdds {
+  homeOdds: number;          // decimal odds (e.g. 1.85)
+  awayOdds: number;
+  homeImpliedProb: number;   // normalised (overround removed), 0–1
+  awayImpliedProb: number;
+  bookmaker: string;         // e.g. "Sportsbet"
+}
