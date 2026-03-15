@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Footy Oracle
+
+**Predict. Compare. Win.**
+
+AFL game predictions, ladder standings, and team stats for the 2026 season — powered by the [Squiggle](https://squiggle.com.au) community model API and a custom win-probability model.
+
+## Features
+
+- **Upcoming games** — round-by-round view with win probability predictions
+- **Custom prediction model** — combines recent form, ladder position, home advantage, and head-to-head history
+- **Community tips** — Squiggle model consensus (how many models tip each team, average confidence)
+- **Results** — completed games with scores, browseable by season (2023–2026)
+- **AFL Ladder** — actual standings computed from game results, plus Squiggle's probabilistic predicted final standings
+- **Teams** — overview grid and individual team pages with season stats and H2H records
+- **Favourite team** — pick your team; it's highlighted across all pages and persists between sessions
+
+## Tech Stack
+
+- [Next.js 16](https://nextjs.org) — App Router, Server Components, Turbopack
+- [TypeScript](https://www.typescriptlang.org)
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [Squiggle API](https://api.squiggle.com.au) — free, no auth required
+
+No database. All data is fetched server-side from the Squiggle API with Next.js `fetch` caching.
+
+## Prediction Model
+
+Win probability for each upcoming game is calculated from four weighted factors:
+
+| Factor | Weight |
+|---|---|
+| Recent form (last 5 games W%) | 35% |
+| Current ladder position | 30% |
+| Home / away advantage | 25% |
+| Head-to-head record (2023–2025) | 10% |
+
+Each factor produces a normalised home/away score; the weighted sum is re-normalised to give a final probability (e.g. 68% home, 32% away).
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+No environment variables required — the Squiggle API is public.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Caching
 
-## Learn More
+| Data | Revalidate |
+|---|---|
+| Current season games & ladder | 5 min |
+| Tips | 1 hr |
+| Historical games (past seasons) | 24 hr |
+| Teams | 24 hr |
 
-To learn more about Next.js, take a look at the following resources:
+## Deployment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Deploy to [Vercel](https://vercel.com) with zero config:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+vercel
+```
 
-## Deploy on Vercel
+Or connect the GitHub repo in the Vercel dashboard for automatic deploys on push.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Data Attribution
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Data courtesy of [Squiggle (squiggle.com.au)](https://squiggle.com.au).
