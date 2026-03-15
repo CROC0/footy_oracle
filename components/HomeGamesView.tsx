@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Game, LadderEntry, Tip } from '@/lib/types';
+import type { Game, Tip } from '@/lib/types';
 import { gamesByRound, getRounds, detectCurrentRound } from '@/lib/squiggle';
 import { predictGame } from '@/lib/prediction';
 import { useFavouriteTeam } from '@/hooks/useFavouriteTeam';
@@ -12,8 +12,9 @@ import type { SquiggleTipSummary } from '@/lib/types';
 interface Props {
   games2026: Game[];
   historicalGames: Game[];
-  ladder: LadderEntry[];
+  eloRatings: [number, number][]; // serialised Map entries [teamid, rating]
   tips: Tip[];
+  currentYear: number;
 }
 
 function buildTipSummary(gameid: number, tips: Tip[], homeTeam: string, awayTeam: string): SquiggleTipSummary {
@@ -29,19 +30,17 @@ function buildTipSummary(gameid: number, tips: Tip[], homeTeam: string, awayTeam
     ? confidences.reduce((a, b) => a + b, 0) / confidences.length
     : null;
 
-  return {
-    tipCount: gameTips.length,
-    homeTips,
-    awayTips,
-    homeConfidence: avgConfidence,
-  };
+  return { tipCount: gameTips.length, homeTips, awayTips, homeConfidence: avgConfidence };
 }
 
-export default function HomeGamesView({ games2026, historicalGames, ladder, tips }: Props) {
+export default function HomeGamesView({ games2026, historicalGames, eloRatings, tips, currentYear }: Props) {
   const rounds = getRounds(games2026);
   const defaultRound = detectCurrentRound(games2026);
   const [selectedRound, setSelectedRound] = useState(defaultRound);
   const { isFavourite } = useFavouriteTeam();
+
+  // Reconstruct Map from serialised entries (Maps can't be passed as RSC props)
+  const eloMap = new Map<number, number>(eloRatings);
 
   const roundGames = gamesByRound(games2026, selectedRound);
   const upcomingRoundGames = roundGames.filter((g) => g.complete < 100);
@@ -58,7 +57,7 @@ export default function HomeGamesView({ games2026, historicalGames, ladder, tips
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingRoundGames.map((game) => {
-              const prediction = predictGame(game, games2026, ladder, historicalGames);
+              const prediction = predictGame(game, games2026, historicalGames, eloMap, currentYear);
               const squiggleTips = buildTipSummary(game.id, tips, game.hteam, game.ateam);
               const favGame = isFavourite(game.hteam) || isFavourite(game.ateam);
               return (
@@ -84,12 +83,7 @@ export default function HomeGamesView({ games2026, historicalGames, ladder, tips
             {completedRoundGames.map((game) => {
               const favGame = isFavourite(game.hteam) || isFavourite(game.ateam);
               return (
-                <GameCard
-                  key={game.id}
-                  game={game}
-                  isFavouriteGame={favGame}
-                  showScore
-                />
+                <GameCard key={game.id} game={game} isFavouriteGame={favGame} showScore />
               );
             })}
           </div>

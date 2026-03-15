@@ -87,7 +87,7 @@ export interface Prediction {
   awayWinProbability: number; // 0–1
   factors: {
     recentForm: { home: number; away: number };
-    ladderPosition: { home: number; away: number };
+    elo: { home: number; away: number };
     homeAdvantage: { home: number; away: number };
     headToHead: { home: number; away: number };
   };
